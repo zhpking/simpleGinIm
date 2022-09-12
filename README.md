@@ -14,7 +14,9 @@
 
 项目目前用到的是mongodb和redis，在使用本系统之前，请先安装好
 
-### message 消息集合
+### mongo 集合说明
+
+1. message 消息集合
 
 ```json
 
@@ -27,7 +29,7 @@
 
 ```
 
-### user 用户集合
+2. user 用户集合
 
 ```json
 
@@ -42,7 +44,7 @@
 
 ```
 
-### room 房间（会话）集合
+3. room 房间（会话）集合
 
 ```json
 
@@ -58,7 +60,7 @@
 
 ```
 
-### user_room 用户所在房间关联集合
+4. user_room 用户所在房间关联集合
 
 ```json
 
@@ -70,7 +72,8 @@
 
 ```
 
-### user_message 用户消息关联集合
+5. user_message 用户消息关联集合
+
 ```json
 
 {
@@ -83,13 +86,18 @@
 
 ```
 
-### user_room_chat_log 用户参与过的房间聊天关联集合
+6. user_room_chat_log 用户参与过的房间聊天关联集合
+
+```json
+
 {
   "user_id": "用户id",
   "room_id": "房间id",
   "created_at": "创建时间"
   "updated_at": "更新时间"
 }
+
+```
 
 ## 配置文件说明
 
