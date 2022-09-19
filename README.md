@@ -8,9 +8,38 @@
 
 ## 关于系统
 
-系统监听端口为8080，如果需要可以自行进行修改
+业务层监听端口为8080，如果需要可以自行进行修改
+
+接入层监听端口为18080，如果需要可以自行进行修改
+
+## 系统目录说明
+
+```
+
+.
+├── cache                   # 缓存方法定义
+├── config                  # 配置文件
+├── define                  # 常量层，用于定义一些枚举或者通用的数据结构
+├── helper                  # 封装的一些常用函数
+├── middleware              # gin中间件
+├── model                   # 数据库模型
+├── router                  # 路由配置
+├── service                 # 逻辑层，接入层和业务层逻辑都在这里
+├── test                    # 单元测试
+├── go.mod                  # go包管理mod文件
+├── go.sum                  # go包管理sum文件
+├── main.go                 # 程序唯一入口文件
+└── readme.md               # 说明文档
+
+```
 
 ## 更新日志
+
+- 2022-09-19
+
+    - 接入层和业务层拆分，两者间用http请求和消息队列进行通讯
+    - 优化了群聊和单聊，群聊使用的是广播的方式，广播所有的接入层推送消息
+    - 目前系统还只是支持websocket接入（web），下一步计划加上socket接入（android和ios）
 
 - 2022-09-11
 
@@ -101,7 +130,7 @@
 {
   "user_id": "用户id",
   "room_id": "房间id",
-  "created_at": "创建时间"
+  "created_at": "创建时间",
   "updated_at": "更新时间"
 }
 
@@ -124,6 +153,14 @@ address = redis连接地址
 
 [login]
 loginExpire = 登录超时时间，单位为秒，0为不超时
+
+[api]
+address=业务层ip地址，多个ip用逗号分隔，如 192.168.78.134,192.168.78.135
+port=业务层监听端口
+
+[ws]
+address=接入层ip地址，多个ip用逗号分隔，如 192.168.78.134,192.168.78.135
+port=接入层监听端口
 
 ```
 
@@ -186,11 +223,12 @@ data						|object		|R			|&nbsp;
 ##### 请求示例
 
 ```json
+
 {
     "Header":{
     },
     "Body":{
-        "user_id":"18520322032",
+        "user_id":"18520322032"
     }
 }
 
@@ -199,6 +237,7 @@ data						|object		|R			|&nbsp;
 ##### 返回结果示例
 
 ```json
+
 {
     "code": 200,
     "data": {
@@ -244,6 +283,7 @@ data						|object		|R			|&nbsp;
 ##### 请求示例
 
 ```json
+
 {
     "Header":{
         "token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiMTAwMDAyMDAwMDQiLCJsb2dpbl9leHBpcmUiOjB9.LPIj_rqyy1gxl_upNfSGtVuhoEmW2GOhc06Wz7GHOSY"
@@ -257,6 +297,7 @@ data						|object		|R			|&nbsp;
 ##### 返回结果示例
 
 ```json
+
 {
     "code": 200,
     "data": {},
@@ -278,57 +319,45 @@ data						|object		|R			|&nbsp;
 Header						|&nbsp;		|R			|请求报文头
 &emsp;token					|string		|R			|用户登录后token，没有登录则为空字符串
 
-
-
-#### 单聊
-
-##### 接口地址
-
-> [POST]https//ip:port/rm/room/single_message
+##### 发送消息数据格式
 
 参数名称						|类型		|出现要求	|描述  
 :----						|:---		|:------	|:---	
-Header						|&nbsp;		|R			|请求报文头
-&emsp;token					|string		|R			|用户登录后token，没有登录则为空字符串
-Body						|&nbsp;		|R			|&nbsp;
-&emsp;to_user_id			|string		|R			|用户id
-&emsp;message				|string		|R			|消息内容
-
-##### 返回结果
-
-参数名称						|类型		|出现要求	|描述  
-:----						|:---		|:------	|:---	
-code						|int		|R			|响应码
-msg							|string		|R			|&nbsp;
-data						|object		|R			|&nbsp;
-
-##### 请求示例
+user_id						|string		|R			|发送者用户id
+to_user_id					|string		|R			|接收者用户id				|object		|R			|&nbsp;
+room_id				        |string		|R			|房间id
+message_type				|int		|R			|消息类型
+message_data				|string		|R			|消息内容
 
 ```json
+
 {
-    "Header":{
-        "token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiMTAwMDAyMDAwMDQiLCJsb2dpbl9leHBpcmUiOjB9.LPIj_rqyy1gxl_upNfSGtVuhoEmW2GOhc06Wz7GHOSY"
-    },
-    "Body":{
-        "message":"hello world"
-        "to_user_id":"18520322032"
-    }
+	"user_id":"10000200275",
+	"to_user_id":"10000200117",
+	"room_id":"39336433396564352d393138322d343062632d626330382d333134313064616561356234",
+	"message_type":1,
+	"message_data":"hello"
 }
 
 ```
 
-##### 返回结果示例
+##### 接收消息数据格式
+
+参数名称						|类型		|出现要求	|描述  
+:----						|:---		|:------	|:---	
+message_id					|string		|R			|消息id
+message_type				|int		|R			|消息类型
+message_data				|string		|R			|消息内容
 
 ```json
+
 {
-    "code": 200,
-    "data": {},
-    "msg": "发送成功"
+	"message_id": "66363761663363642d303830342d346339622d383131332d393864326532376163616132",
+	"message_type": 1,
+	"message_data": "hello"
 }
 
 ```
-
-
 
 #### 创建群聊房间
 
@@ -582,23 +611,6 @@ data						|object		|R			|&nbsp;
 }
 
 ```
-
-
-
-#### 群聊
-
-##### 接口地址
-
-> ws//ip:port/rm/room/room_message
-
-参数名称						|类型		|出现要求	|描述  
-:----						|:---		|:------	|:---	
-Header						|&nbsp;		|R			|请求报文头
-&emsp;token					|string		|R			|用户登录后token，没有登录则为空字符串
-Body						|&nbsp;		|R			|&nbsp;
-&emsp;room_id			    |string		|R			|房间id
-&emsp;message			    |string		|R			|消息内容
-
 
 
 #### 获取会话列表

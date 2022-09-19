@@ -3,9 +3,9 @@ package service
 import (
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/mongo"
+	"log"
 	"simpleGinIm/define"
 	"simpleGinIm/helper"
-	"log"
 	"simpleGinIm/model"
 	"time"
 )
@@ -60,20 +60,13 @@ func GetLoginToken(ctx *gin.Context) {
 	helper.SucResponse(ctx, "获取token成功", data)
 }
 
-func LoginOut(ctx *gin.Context) {
-	// userId := ctx.PostForm("user_id");
-	userToken := ctx.MustGet("user_token").(*helper.UserToken)
+func UserLoginOut(userId []string) error {
 	currentTime := time.Now().Unix()
-
-	err := model.UpdateUserLoginOutStatusByUserId(userToken.UserId, define.LOGIN_STATUS_OFFLINE, currentTime)
+	// 更新用户信息
+	err := model.UpdateUserLoginOutStatusByUserIdList(userId, define.LOGIN_STATUS_OFFLINE, currentTime)
 	if err != nil {
-		log.Printf("[DB ERROR]%v\n", err)
-		helper.FailResponse(ctx, "系统错误")
-		return
+		return err
 	}
 
-	// 删除用户连接
-	RemoveUserConnect(userToken.UserId)
-
-	helper.SucResponse(ctx, "退出登录成功", make(map[string]interface{}))
+	return nil
 }

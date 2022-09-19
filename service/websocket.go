@@ -4,22 +4,32 @@ import (
 	"encoding/json"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
-	"go.mongodb.org/mongo-driver/mongo"
 	"log"
+	"simpleGinIm/cache"
 	"simpleGinIm/define"
 	"simpleGinIm/helper"
-	"simpleGinIm/model"
+	"strconv"
+	"sync"
 	"time"
 )
 
 var upgrader websocket.Upgrader = websocket.Upgrader{}
-var wc map[string]*websocket.Conn = make(map[string]*websocket.Conn)
+// var wc map[string]*websocket.Conn = make(map[string]*websocket.Conn)
+var wc map[string]*WcConn = make(map[string]*WcConn)
 
+type WcConn struct {
+	conn *websocket.Conn
+	expireTime int64
+	lock sync.Mutex
+}
+
+/*
 type responseMessage struct {
 	MessageId string `json:"message_id"`
 	MessageType int64 `json:"message_type"`
 	MessageData string `json:"message_data"`
 }
+*/
 
 func Connect(ctx *gin.Context) {
 	conn, err := upgrader.Upgrade(ctx.Writer, ctx.Request, nil)
@@ -30,278 +40,149 @@ func Connect(ctx *gin.Context) {
 	}
 
 	ut := ctx.MustGet("user_token").(*helper.UserToken)
-	wc[ut.UserId] = conn
-
-	// helper.SucResponse(ctx, "系统异常", make(map[string]interface{}))
-}
-
-func SingleMessage(ctx *gin.Context) {
-	message := ctx.PostForm("message")
-	toUserId := ctx.PostForm("to_user_id")
-	userToken := ctx.MustGet("user_token").(*helper.UserToken)
-	currentTime := time.Now().Unix()
-
-	// 新建一条消息
-	msg := &model.Message{
-		MessageId:helper.GetUuid(),
-		MessageData:message,
-		MessageType:define.MESSAGE_TYPE_TEXT,
-		MessageStatus:define.MESSAGE_STATUS_OK,
-		CreateAt:currentTime,
+	wcConn := &WcConn{
+		conn:conn,
+		expireTime:ut.LoginExpire,
 	}
-	err := model.MessageInsertOne(msg)
-	if err != nil {
-		log.Printf("[DB ERROR] %v\n", err)
-		helper.FailResponse(ctx, "系统错误")
-		return
-	}
+	wc[ut.UserId] = wcConn
 
-	// 两人是否拥有房间
-	isHasRoom := true
+	// 建立用户socket和服务器ip的路由映射
+	ipList := helper.GetLocalIP()
+	address := ipList[0]
+	// 获取端口
+	port, _ := helper.GetWsPort()
+	address = address + ":" + port
+	// 建立用户id和长连接socket的关系
+	cache.SetConnection2User(ut.UserId, address)
 
-	// 获取单聊房间
-	sendUrList, err := model.GetUserRoomListByUserId(userToken.UserId, define.ROOM_TYPE_SINGLE)
-	sendRoomIdList := make([]string, 0)
-	if err == mongo.ErrNoDocuments {
-		isHasRoom = false
-	} else {
-		for _, v := range sendUrList {
-			sendRoomIdList = append(sendRoomIdList, v.RoomId)
-		}
-	}
-
-	var toUrList []*model.UserRoom
-	toRoomIdList := make([]string, 0)
-	if isHasRoom {
-		toUrList, err = model.GetUserRoomListByUserId(toUserId, define.ROOM_TYPE_SINGLE)
-		if err == mongo.ErrNoDocuments {
-			isHasRoom = false
-		} else {
-			for _, v := range toUrList {
-				toRoomIdList = append(toRoomIdList, v.RoomId)
-			}
-		}
-	}
-
-	singleRoomId := ""
-	if isHasRoom {
-		// 查找房间并集
-		intersectList := helper.IntersectArray(sendRoomIdList, toRoomIdList)
-		if len(intersectList) > 0 {
-			singleRoomId = intersectList[0]
-		}
-	}
-
-	if singleRoomId == "" {
-		// 没有私聊房间，创建一个私聊房间
-		room := &model.Room{
-			RoomId:helper.GetUuid(),
-			RoomType:define.ROOM_TYPE_SINGLE,
-			RoomStatus:define.ROOM_STATUS_OK,
-			RoomHostUserId:userToken.UserId,
-			LastUserId:userToken.UserId,
-			LastMessageId:msg.MessageId,
-			LastMessageUpdatedAt:currentTime,
-			CreateAt:currentTime,
-		}
-		err = model.RoomInsertOne(room)
+	// 接收客户端发送过来的消息
+	for {
+		// https://www.jianshu.com/p/5d000523e2bd
+		receiveMsg := &define.ReceiveMessage{}
+		err := conn.ReadJSON(receiveMsg)
 		if err != nil {
-			log.Printf("[DB ERROR] %v\n", err)
-			helper.FailResponse(ctx, "系统错误")
-			return
-		}
-
-		// 建立私聊房间关系
-		userRoom := [] interface{} {
-			&model.UserRoom{
-			UserId:userToken.UserId,
-			RoomId:room.RoomId,
-			RoomType:room.RoomType,
-			CreateAt:currentTime,
-			},
-			&model.UserRoom{
-			UserId:toUserId,
-			RoomId:room.RoomId,
-			RoomType:room.RoomType,
-			CreateAt:currentTime,
-			},
-		}
-		err = model.UserRoomInsertMany(userRoom)
-		if err != nil {
-			log.Printf("[DB ERROR] %v\n", err)
-			helper.FailResponse(ctx, "系统错误")
-			return
-		}
-
-		singleRoomId = room.RoomId
-	} else {
-		// 更新房间最后一条消息信息
-		err := model.UpdateRoomLastMessageByRoomId(singleRoomId, userToken.UserId,msg.MessageId,currentTime)
-		if err != nil {
-			log.Printf("[DB ERROR] %v\n", err)
-		}
-	}
-
-	// 记录聊天消息
-	userMessage := &model.UserMessage{
-		RoomId:singleRoomId,
-		MessageId:msg.MessageId,
-		SendUserId:userToken.UserId,
-		SendStatus:define.MESSAGE_STATUS_OK,
-		CreateAt:currentTime,
-	}
-	err = model.UserMessageInsertOne(userMessage)
-	if err != nil {
-		log.Printf("[DB ERROR] %v\n", err)
-	}
-
-	// 记录用户参与过聊天的房间
-	userRoomChatLog := &model.UserRoomChatLog {
-		UserId:userToken.UserId,
-		RoomId:singleRoomId,
-		RoomType:define.ROOM_TYPE_SINGLE,
-		LastUpdatedAt:currentTime,
-	}
-	err = model.UserRoomChatLogInsertOrUpdateOne(userRoomChatLog)
-	if err != nil {
-		log.Printf("[DB ERROR] 新建聊天列表失败, err: %v\n", err)
-		helper.FailResponse(ctx, "系统错误")
-		return
-	}
-
-	// 推送消息
-	conn, ok := wc[toUserId]
-	if !ok {
-		// 对方不在线
-		helper.SucResponse(ctx, "发送成功", make(map[string]interface{}))
-		return
-	}
-
-	sendMessageData := responseMessage{
-		MessageId:msg.MessageId,
-		MessageType:msg.MessageType,
-		MessageData:msg.MessageData,
-	}
-	responseData, _ := json.Marshal(sendMessageData)
-
-	// err = conn.WriteMessage(websocket.TextMessage, msg.MessageData)
-	err = conn.WriteMessage(websocket.TextMessage, responseData)
-	if err != nil {
-		log.Printf("消息发送失败,error: %v\n", err)
-		helper.FailResponse(ctx, "发送失败")
-		return
-	}
-}
-
-func RoomMessage(ctx *gin.Context) {
-	userToken := ctx.MustGet("user_token").(*helper.UserToken)
-	message := ctx.PostForm("message")
-	roomId := ctx.PostForm("room_id")
-	currentTime := time.Now().Unix()
-
-	// 查询用户是否处于该房间
-	_, err := model.GetUserRoomByRoomIdUserId(roomId, userToken.UserId)
-	if err == mongo.ErrNoDocuments {
-		helper.FailResponse(ctx, "你不在房间")
-		return
-	}
-
-	if err != nil {
-		log.Printf("[DB ERROR] %v\n", err)
-		helper.FailResponse(ctx, "系统错误")
-		return
-	}
-
-	// 添加消息
-	msg := &model.Message{
-		MessageId:helper.GetUuid(),
-		MessageData:message,
-		MessageType:define.MESSAGE_TYPE_TEXT,
-		MessageStatus:define.MESSAGE_STATUS_OK,
-		CreateAt:currentTime,
-	}
-	err = model.MessageInsertOne(msg)
-	if err != nil {
-		log.Printf("[DB ERROR] 新建消息失败, err: %v\n", err)
-		helper.FailResponse(ctx, "系统错误")
-		return
-	}
-
-	// 添加房间消息
-	userMessage := &model.UserMessage{
-		RoomId:roomId,
-		MessageId:msg.MessageId,
-		SendUserId:userToken.UserId,
-		SendStatus:define.MESSAGE_STATUS_OK,
-		CreateAt:currentTime,
-	}
-	err = model.UserMessageInsertOne(userMessage)
-	if err != nil {
-		log.Printf("[DB ERROR] 新建房间消息失败, err: %v\n", err)
-		helper.FailResponse(ctx, "系统错误")
-		return
-	}
-
-	// 记录用户参与过聊天的房间
-	userRoomChatLog := &model.UserRoomChatLog {
-		UserId:userToken.UserId,
-		RoomId:roomId,
-		RoomType:define.ROOM_TYPE_MANY,
-		LastUpdatedAt:currentTime,
-	}
-	err = model.UserRoomChatLogInsertOrUpdateOne(userRoomChatLog)
-	if err != nil {
-		log.Printf("[DB ERROR] 新建聊天列表失败, err: %v\n", err)
-		helper.FailResponse(ctx, "系统错误")
-		return
-	}
-
-	// 获取房间所有用户
-	sendUserIdList := make([]string, 0)
-	userRoomList, err := model.GetUserRoomListByRoomId(roomId)
-	if err != nil {
-		log.Printf("[DB ERROR] 获取用户列表失败, err: %v\n", err)
-		helper.FailResponse(ctx, "系统错误")
-		return
-	}
-
-	// 获取所有的用户id
-	for _, v := range userRoomList {
-		sendUserIdList = append(sendUserIdList, v.UserId)
-	}
-
-	sendMessageData := responseMessage{
-		MessageId:msg.MessageId,
-		MessageType:msg.MessageType,
-		MessageData:msg.MessageData,
-	}
-	responseData, _ := json.Marshal(sendMessageData)
-
-	// 发送信息
-	for _, v := range sendUserIdList {
-		// 不需要发给自己
-		if userToken.UserId == v {
+			log.Printf("[MESSAGE RECEIVE ERROR]  websocket.go, err:接收用户消息错误, err:%v\n", err)
 			continue
 		}
 
-		if conn, ok := wc[v]; ok {
-			// 推送消息
-			// err = conn.WriteMessage(websocket.TextMessage, []byte(message))
-			err = conn.WriteMessage(websocket.TextMessage, responseData)
-			if err != nil {
-				log.Printf("[WEBSOCKET] %v发送消息失败，err:%v\n", v, err)
-			}
+		// 转为json，扔给消息队列
+		data, err := json.Marshal(receiveMsg)
+		if err != nil {
+			log.Printf("[JSON ERROR] websocket.go, err:%v\n", err)
 		}
+		cache.SetUserSendMessageList(string(data))
+	}
+	// helper.SucResponse(ctx, "系统异常", make(map[string]interface{}))
+}
+
+func LoginOut(ctx *gin.Context) {
+	ut := ctx.MustGet("user_token").(*helper.UserToken)
+	RemoveUserConnect(ut.UserId)
+}
+
+// 推送消息
+func PushSingleMessage(ctx *gin.Context) {
+	toUserId := ctx.PostForm("to_user_id")
+	messageId := ctx.PostForm("message_id")
+	messageTypeStr := ctx.PostForm("message_type")
+	messageData := ctx.PostForm("message_data")
+	messageType, _ := strconv.ParseInt(messageTypeStr, 10, 64)
+
+	toUserIdList := []string{}
+	err := json.Unmarshal([]byte(toUserId), &toUserIdList)
+	if err != nil {
+		log.Printf("[JSON ERROR] json转化错误 %v\n", err)
+		return
 	}
 
-	helper.SucResponse(ctx, "消息发送成功", make(map[string]string))
+	// 构造消息体
+	sendMessageData := define.ResponseMessage{
+		MessageId:messageId,
+		MessageType:messageType,
+		MessageData:messageData,
+	}
+	responseData, _ := json.Marshal(sendMessageData)
+
+	for _, uId := range toUserIdList {
+		// 推送消息
+		wcCon, ok := wc[uId]
+		if !ok {
+			// 对方不在线
+			// helper.SucResponse(ctx, "发送成功", make(map[string]interface{}))
+			continue
+		}
+
+		// err = conn.WriteMessage(websocket.TextMessage, msg.MessageData)
+		go func(wcCon *WcConn) {
+			// 推送消息时加锁，websocket并不支持并发推送
+			wcCon.lock.Lock()
+			err = wcCon.conn.WriteMessage(websocket.TextMessage, responseData)
+			wcCon.lock.Unlock()
+			if err != nil {
+				log.Printf("消息发送失败,error: %v\n", err)
+				helper.FailResponse(ctx, "发送失败")
+				return
+			}
+		}(wcCon)
+	}
 }
 
 func RemoveUserConnect(userId string) error {
-	err := wc[userId].Close()
+	err := wc[userId].conn.Close()
 	if err != nil {
 		return err
 	}
 	delete(wc, userId)
 	return nil
+}
+
+// websocket心跳参考 https://www.cnblogs.com/tianyun5115/p/12613274.html
+func CheckWebSocketConn() {
+	pingPeriod := define.WEBSOCKET_PING_PERIOD * time.Second
+	ticker := time.NewTicker(pingPeriod)
+
+	for {
+		select {
+		case <-ticker.C:
+			log.Println("开始心跳检测")
+			currentTime := time.Now().Unix()
+			if len(wc) == 0 {
+				return
+			}
+
+			wg := &sync.WaitGroup{}
+			wg.Add(len(wc))
+			for userId, c := range wc {
+				// 超时登录&心跳检测
+				go func(wcCon *WcConn, wg *sync.WaitGroup) {
+					if wcCon.expireTime != 0 && wcCon.expireTime < currentTime {
+						// todo 登录超时，退出登录
+						log.Println("心跳检测:" + userId + "退出登录")
+						// 删除用户连接
+						// todo 把需要退出登录的用户id放进消息队列
+						RemoveUserConnect(userId)
+					}
+
+					err := wcCon.conn.SetWriteDeadline(time.Now().Add(define.WEBSOCKET_PING_WAIT_TIME * time.Second))
+					if err != nil {
+						log.Printf("ping error: %s\n", err.Error())
+					}
+					// 推送消息时加锁，websocket并不支持并发推送
+					wcCon.lock.Lock()
+					err = wcCon.conn.WriteMessage(websocket.PingMessage, nil)
+					wcCon.lock.Unlock()
+					if err != nil {
+						// todo 登录超时，退出登录
+						// 删除用户连接
+						log.Println("心跳检测:" + userId + "退出登录")
+						// todo 把需要退出登录的用户id放进消息队列
+						RemoveUserConnect(userId)
+					}
+					wg.Done()
+				}(c, wg)
+			}
+
+			wg.Wait()
+		}
+	}
 }

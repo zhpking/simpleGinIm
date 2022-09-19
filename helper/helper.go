@@ -6,11 +6,14 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"gopkg.in/ini.v1"
+	"io/ioutil"
 	"log"
+	"net"
 	"net/http"
 	"simpleGinIm/define"
+	"strings"
 	"time"
-	)
+)
 
 // 加密字符串
 var myKey = []byte("im")
@@ -73,6 +76,59 @@ func AnalyseToken(tokenString string) (*UserToken, error) {
 // 获取uuid
 func GetUuid() string {
 	return fmt.Sprintf("%x", uuid.New())
+}
+
+// 获取本机ip
+func GetLocalIP() []string {
+	var ipStr []string
+	netInterfaces, err := net.Interfaces()
+	if err != nil {
+		fmt.Println("net.Interfaces error:", err.Error())
+		return ipStr
+	}
+
+	for i := 0; i < len(netInterfaces); i++ {
+		if (netInterfaces[i].Flags & net.FlagUp) != 0 {
+			addrs, _ := netInterfaces[i].Addrs()
+			for _, address := range addrs {
+				if ipnet, ok := address.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+					//获取IPv6
+					/*if ipnet.IP.To16() != nil {
+					    fmt.Println(ipnet.IP.String())
+					    ipStr = append(ipStr, ipnet.IP.String())
+
+					}*/
+					//获取IPv4
+					if ipnet.IP.To4() != nil {
+						fmt.Println(ipnet.IP.String())
+						ipStr = append(ipStr, ipnet.IP.String())
+
+					}
+				}
+			}
+		}
+	}
+	return ipStr
+
+}
+
+// 发送post请求
+func SendPost(address string, body string) error {
+	// res, err := http.Post(address, "application/x-www-form-urlencoded;charset=utf-8", bytes.NewBuffer(sendData))
+	res, err := http.Post(address, "application/x-www-form-urlencoded;charset=utf-8", strings.NewReader(body))
+	if err != nil {
+		return err
+	}
+
+	defer res.Body.Close()
+
+	content, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		return err
+	}
+
+	log.Println(string(content))
+	return nil
 }
 
 func SucResponse(ctx *gin.Context, msg string, data interface{}) {

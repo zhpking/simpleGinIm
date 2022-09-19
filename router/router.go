@@ -18,10 +18,11 @@ func Router() *gin.Engine {
 	auth.POST("/user/login_out", service.LoginOut)
 	// 连接IM
 	auth.GET("/user/connect", service.Connect)
+	// 推送消息
+	r.POST("/user/push_message", service.PushSingleMessage)
 
+	// 校验房间中间件
 	roomAuth := r.Group("/rm", middleware.AuthCheck())
-	// 单聊
-	roomAuth.POST("/room/single_message", service.SingleMessage)
 	// 创建群聊房间
 	roomAuth.POST("/room/create_room", service.CreateRoom)
 	// 用户进入房间
@@ -34,8 +35,6 @@ func Router() *gin.Engine {
 	roomAuth.POST("/room/exit_room", service.ExitRoom)
 	// 踢人
 	roomAuth.POST("/room/kick_out_room", service.KickOutRoom)
-	// 群聊
-	roomAuth.POST("/room/room_message", service.RoomMessage)
 	// 获取会话列表
 	roomAuth.GET("/room/get_room_list", service.GetRoomList)
 	// 获取某个会话聊天记录
