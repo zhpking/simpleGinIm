@@ -5,6 +5,8 @@ const (
 	MESSAGE_STATUS_CANCEL = 0 // 消息状态：撤回
 
 	MESSAGE_TYPE_TEXT = 1; // 消息类型：文本消息
+	MESSAGE_TYPE_PING = 10000; // 特殊消息：Ping消息
+	MESSAGE_TYPE_DISCONNECT = 10001 // 特殊消息：断开连接消息
 )
 
 // 单聊推送消息体
@@ -27,4 +29,5 @@ type ReceiveMessage struct {
 	RoomId string `json:"room_id"`
 	MessageType int64 `json:"message_type"`
 	MessageData string `json:"message_data"`
+	Fn string `json:"fn"` // 消息处理方法，如service.login
 }

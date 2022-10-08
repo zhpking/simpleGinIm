@@ -1,6 +1,6 @@
 # simpleGinIm
 
-基于gin，一个简单的，给第三方项目接入的IM系统
+基于gin，一个简单的，给第三方项目接入的IM系统，目前该项目在逐步完善中，具体请看更新日志
 
 ## Go版本
 
@@ -17,14 +17,16 @@
 ```
 
 .
+├── api                     # 业务层接口
 ├── cache                   # 缓存方法定义
 ├── config                  # 配置文件
+├── connect                 # 接入层接口
 ├── define                  # 常量层，用于定义一些枚举或者通用的数据结构
+├── example                 # 一些实例代码
 ├── helper                  # 封装的一些常用函数
 ├── middleware              # gin中间件
 ├── model                   # 数据库模型
-├── router                  # 路由配置
-├── service                 # 逻辑层，接入层和业务层逻辑都在这里
+├── service                 # 通用逻辑层
 ├── test                    # 单元测试
 ├── go.mod                  # go包管理mod文件
 ├── go.sum                  # go包管理sum文件
@@ -34,6 +36,14 @@
 ```
 
 ## 更新日志
+
+- 2022-10-04
+
+    - 支持socket接入方式
+    - 添加心跳检查
+    - 接入层提供推送消息接口，支持业务层进行消息推送
+    - 使用redis作为消息队列，解耦业务层和接入层
+    - 优化项目目录结构
 
 - 2022-09-19
 
@@ -219,6 +229,10 @@ code						|int		|R			|响应码
 msg							|string		|R			|&nbsp;
 data						|object		|R			|&nbsp;
 &emsp;token				    |string		|R			|用户token
+&emsp;tcpAddress			|string		|R			|tcp连接ip
+&emsp;tcpPort				|string		|R			|tcp连接端口
+&emsp;websocketAddress		|string		|R			|websocket连接ip
+&emsp;websocketPort			|string		|R			|websocket连接端口
 
 ##### 请求示例
 
@@ -241,7 +255,11 @@ data						|object		|R			|&nbsp;
 {
     "code": 200,
     "data": {
-        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiMTAwMDAyMDAyNzUiLCJsb2dpbl9leHBpcmUiOjB9.bHWKr0XSOxLwUHd1os-AltV-btgtAVyRCuaGGVoP2io"
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiMTAwMDAyMDAyNzUiLCJsb2dpbl9leHBpcmUiOjB9.bHWKr0XSOxLwUHd1os-AltV-btgtAVyRCuaGGVoP2io",
+        "tcpAddress": "192.168.0.1",
+        "tcpPort": "18080",
+        "websocketAddress": "192.168.0.1",
+        "websocketPort": "28080"
     },
     "msg": "获取token成功"
 }

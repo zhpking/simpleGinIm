@@ -100,7 +100,7 @@ func GetLocalIP() []string {
 					}*/
 					//获取IPv4
 					if ipnet.IP.To4() != nil {
-						fmt.Println(ipnet.IP.String())
+						// fmt.Println(ipnet.IP.String())
 						ipStr = append(ipStr, ipnet.IP.String())
 
 					}

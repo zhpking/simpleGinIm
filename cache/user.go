@@ -6,14 +6,14 @@ import (
 	"simpleGinIm/define"
 )
 
-// 获取用户会话列表
+// todo 获取用户会话列表
 func GetUserRoomIdList(userId string, page, pageSize int64) []string {
 	start := (page - 1) * pageSize
 	end := page * pageSize
 	return Redis.ZRange(context.Background(), define.REDIS_SET_USER_ROOM_ID_LIST + userId, start, end).Val()
 }
 
-// 设置用户参与过的会话
+// todo 设置用户参与过的会话
 func SetUserRoomId(userId, roomId string, currentTime int64) {
 	z := &redis.Z{
 		Score:float64(currentTime),
@@ -32,12 +32,17 @@ func SetConnection2User(userId, ipAddress string) {
 	Redis.Set(context.Background(), define.REDIS_STRING_USER_WEBSOCKET_CONNECT + userId, ipAddress, 0)
 }
 
+// 设置登录用户消息队列
+func SetUserLoginList(userId string) {
+	Redis.LPush(context.Background(), define.REDIS_LIST_USER_LOGIN, userId)
+}
+
 // 设置退出登录用户消息队列
 func SetUserLoginOutList(userId string) {
 	Redis.LPush(context.Background(), define.REDIS_LIST_USER_LOGIN_OUT, userId)
 }
 
-// 设置用户发送消息消息队列
+// todo 设置用户发送消息消息队列
 func SetUserSendMessageList(data string) {
 	Redis.LPush(context.Background(), define.REDIS_LIST_USER_SEND_MESSAGE, data)
 }

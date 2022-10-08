@@ -57,6 +57,23 @@ func UpdateUserLoginStatusByUserId(userId string, loginStatus, lastLoginTime int
 	return err
 }
 
+func UpdateUserLoginStatusByUserIdList(userId []string, loginStatus, lastLoginTime int64) error {
+	filter := bson.D{
+		{"user_id", bson.D{
+			{"$in",userId},
+		}},
+	}
+	update := bson.D{{"$set", bson.D{
+		{"login_status", loginStatus},
+		{"last_login_time", lastLoginTime},
+	}}}
+
+	_, err := Mongo.Collection(User{}.CollectionName()).
+		UpdateOne(context.TODO(), filter, update)
+
+	return err
+}
+
 func UpdateUserLoginOutStatusByUserId(userId string, loginStatus, lastLoginOutTime int64) error {
 	filter := bson.D{{"user_id", userId}}
 	update := bson.D{{"$set", bson.D{
@@ -71,10 +88,11 @@ func UpdateUserLoginOutStatusByUserId(userId string, loginStatus, lastLoginOutTi
 }
 
 func UpdateUserLoginOutStatusByUserIdList(userId []string, loginStatus, lastLoginOutTime int64) error {
-	// filter := bson.D{{"user_id", userId}}
-	filter := bson.D{{"$in", bson.D{
-		{"user_id", userId},
-	}}}
+	filter := bson.D{
+		{"user_id", bson.D{
+			{"$in",userId},
+		}},
+	}
 	update := bson.D{{"$set", bson.D{
 		{"login_status", loginStatus},
 		{"last_login_out_time", lastLoginOutTime},

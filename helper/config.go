@@ -27,8 +27,19 @@ func GetApiPort() (string, error) {
 		return "", err
 	}
 
-	// 获取mongo分区的key
 	port := cfg.Section("api").Key("port").String()
+	return port, nil
+}
+
+func GetTcpPort() (string, error) {
+	path := define.GetSysConfigPath()
+	cfg, err := ini.Load(path)
+	if err != nil {
+		log.Printf("[SYS CONFIG ERROR] %v\n", err)
+		return "", err
+	}
+
+	port := cfg.Section("tcp").Key("port").String()
 	return port, nil
 }
 
@@ -55,6 +66,20 @@ func GetApiAddress() ([]string, error) {
 	}
 
 	address := cfg.Section("api").Key("address").String()
+	addressList := strings.Split(address, ",")
+
+	return addressList, nil
+}
+
+func GetTcpAddress() ([]string, error) {
+	path := define.GetSysConfigPath()
+	cfg, err := ini.Load(path)
+	if err != nil {
+		log.Printf("[SYS CONFIG ERROR] %v\n", err)
+		return []string{}, err
+	}
+
+	address := cfg.Section("tcp").Key("address").String()
 	addressList := strings.Split(address, ",")
 
 	return addressList, nil

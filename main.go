@@ -2,10 +2,14 @@ package main
 
 import (
 	"log"
+	"simpleGinIm/connect/handler"
+	"simpleGinIm/example"
 	"simpleGinIm/helper"
-	"simpleGinIm/router"
+	"simpleGinIm/api/router"
+	router2 "simpleGinIm/connect/router"
 	"simpleGinIm/service"
 	"sync"
+	"time"
 )
 
 func main() {
@@ -20,19 +24,27 @@ func main() {
 	// 启动ws
 	go StartWs()
 
+	go StartTcp()
+	time.Sleep(3 * time.Second)
+	example.TcpClient()
+
 	wg.Wait()
 }
 
 func StartApi() {
-	port, err := helper.GetWsPort()
+	port, err := helper.GetApiPort()
 	if err != nil {
 		log.Printf("[SYS CONFIG ERROR] %v\n", err)
 	}
 
-	// 启动退出登录队列
+	// 启动用户登录队列
+	go service.GetUserLoginByMQ()
+	// 启动用户退出登录队列
 	go service.GetUserLoginOutByMQ()
-	// 启动用户发送消息队列
-	go service.UserSendMessageByMQ()
+	// 启动用户发送处理消息队列
+	// go service.UserSendMessageByMQ()
+	// 服务注册
+	// go service.RegisterService()
 
 	e := router.Router()
 	e.Run(":" + port)
@@ -40,14 +52,24 @@ func StartApi() {
 
 func StartWs() {
 
-	port, err := helper.GetApiPort()
+	port, err := helper.GetWsPort()
 	if err != nil {
 		log.Printf("[SYS CONFIG ERROR] %v\n", err)
 	}
+	// port = "12345"
+
 
 	// 启动心跳检测
-	go service.CheckWebSocketConn()
+	go handler.CheckWebSocketConn()
 
-	e := router.Router()
+	e := router2.Router()
 	e.Run(":" + port)
+}
+
+func StartTcp() {
+	// 心跳检测
+	// go handler.CheckTcpConn()
+	// 检测tcp临时连接
+	// go handler.CheckConnectTsConn()
+	handler.TcpConnect()
 }
